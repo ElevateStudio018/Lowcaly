@@ -1,8 +1,15 @@
 @import "tailwindcss";
 
-:root {
-  --font-sans:
+@theme {
+  --font-display: "Anton", ui-sans-serif, sans-serif;
+  --font-serif: "Fraunces", ui-serif, Georgia, serif;
+  --font-body:
     "Manrope", ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  --color-forest: #0e3b2c;
+  --color-forest-deep: #082a1f;
+  --color-cream: #faf0dd;
+  --color-cream-soft: #f3e3c8;
 }
 
 html {
@@ -10,5 +17,7 @@ html {
 }
 
 body {
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
+  background: var(--color-cream);
+  color: var(--color-forest);
 }
