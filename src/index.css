@@ -82,6 +82,27 @@ body {
   color: var(--color-forest);
 }
 
+@keyframes garnish-float {
+  0%,
+  100% {
+    transform: translate3d(0, -4px, 0);
+  }
+  50% {
+    transform: translate3d(0, 4px, 0);
+  }
+}
+
+.garnish-float {
+  animation: garnish-float 6s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* A hidden piece still ticks its animation, and 24 of them tick every frame.
+   Only the handful on screen are allowed to run. */
+[data-garnish="off"] .garnish-float {
+  animation-play-state: paused;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

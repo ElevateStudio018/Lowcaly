@@ -4,6 +4,7 @@ import { FLAVORS } from "../lib/flavors";
 import { buildCarton } from "../lib/carton";
 import { buildPhoto, photoFor } from "../lib/photos";
 import { BLOBS, DOODLES, ORNAMENTS } from "../lib/art";
+import { GARNISH, SHAPES, type Tone } from "../lib/garnish";
 import { StaticRange } from "./StaticRange";
 
 const CREAM = "#faf0dd";
@@ -22,6 +23,16 @@ const FLOAT_PX = 3;
 const FLOAT_PERIOD = 5;
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+/** Fast off the mark, settling into place — how a product lands. */
+const easeOut = (v: number) => 1 - Math.pow(1 - clamp01(v), 3);
+/** Slow to leave, then gone — how a product is whipped away. */
+const easeIn = (v: number) => Math.pow(clamp01(v), 2.4);
+/** Overshoots slightly, so a piece lands rather than glides to a stop. */
+const easeBack = (v: number) => {
+  const c = 1.7;
+  const u = clamp01(v) - 1;
+  return 1 + (c + 1) * u * u * u + c * u * u;
+};
 const smooth = (v: number) => {
   const t = clamp01(v);
   return t * t * (3 - 2 * t);
@@ -60,6 +71,36 @@ function stageColor(stage: number) {
   return mixHex(FLAVORS[index].accent, next, band(local, 0.45, 0.95));
 }
 
+/** Darkens a hex toward the brand green, for the shaded side of a fruit. */
+function shade(hex: string, amount: number) {
+  const [r, g, b] = rgb(hex);
+  const [dr, dg, db] = rgb("#0e3b2c");
+  return `rgb(${Math.round(mix(r, dr, amount))},${Math.round(mix(g, dg, amount))},${Math.round(mix(b, db, amount))})`;
+}
+
+function toneColor(tone: Tone, flavor: (typeof FLAVORS)[number]) {
+  switch (tone) {
+    case "fill":
+      return flavor.pop;
+    case "light":
+      return flavor.accent;
+    case "dark":
+      return shade(flavor.pop, 0.36);
+    case "leaf":
+      return "#2f6b3f";
+    case "ice":
+      return "rgba(158,203,224,0.62)";
+    case "iceMid":
+      return "rgba(120,176,203,0.6)";
+    case "iceLight":
+      return "rgba(255,255,255,0.82)";
+    case "iceEdge":
+      return "rgba(86,145,175,0.75)";
+    default:
+      return "#0e3b2c";
+  }
+}
+
 /** Cartons alternate which way they lean, the way the reference tumbles. */
 const restTilt = (i: number) => (i % 2 === 0 ? 0.3 : -0.14);
 
@@ -75,6 +116,7 @@ export function Cinematic() {
   const railRefs = useRef<(HTMLDivElement | null)[]>([]);
   const decorRefs = useRef<(SVGSVGElement | null)[]>([]);
   const ornRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const garnishRefs = useRef<(HTMLDivElement | null)[][]>(FLAVORS.map(() => []));
   const [reduced, setReduced] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -155,6 +197,7 @@ export function Cinematic() {
     // would not change anything — an idle page then costs almost nothing.
     let lastBg = "";
     const lastBeat = FLAVORS.map(() => -1);
+    const lastGarnish: Record<number, number> = {};
 
     const draw = () => {
       const time = clock.elapsedTime;
@@ -199,8 +242,11 @@ export function Cinematic() {
         // Story arrangement: the product tumbles in, settles at its lean, then
         // tumbles out larger — the beat the reference cuts on.
         const rel = stage - 1 - i;
-        const enter = band(rel, -1, 0);
-        const exit = band(rel, 0, 1);
+        // The reference holds each product still for most of its beat and
+        // spends the rest on a quick hand-off. Moving the whole way across,
+        // as this did, made every flavour arrive at the same lukewarm speed.
+        const enter = easeOut((rel + 0.85) / 0.55);
+        const exit = easeIn((rel - 0.3) / 0.55);
         const tilt = restTilt(i) * (narrow ? 0.55 : 1);
         const storyX = restX + mix(-0.55, 0.45, (enter + exit) / 2) * (narrow ? 0.2 : 1);
         const storyY = mix(-1.25, 0, enter) + mix(0, 1.05, exit) + restY;
@@ -212,7 +258,7 @@ export function Cinematic() {
         // and it reads near side-on at most while fully visible.
         const storyRotY = mix(1.3, 0, enter) + mix(0, -1.1, exit) + pointer.x * 0.2;
         const storyScale = restScale * mix(0.7, 1, enter) * mix(1, 1.3, exit);
-        const storyFade = Math.min(band(rel, -1, -0.58), 1 - band(rel, 0.58, 1));
+        const storyFade = Math.min(band(rel, -0.85, -0.55), 1 - band(rel, 0.55, 0.85));
 
         const blend = stepForward;
         const floatY =
@@ -260,7 +306,7 @@ export function Cinematic() {
         // Complementary bands: the outgoing copy is gone by the midpoint,
         // where the incoming copy starts, so two names never overlap.
         const shown = Math.round(
-          Math.min(band(rel, -0.5, -0.12), 1 - band(rel, 0.12, 0.5)) * 1000,
+          Math.min(band(rel, -0.46, -0.26), 1 - band(rel, 0.26, 0.46)) * 1000,
         ) / 1000;
         if (shown === lastBeat[i]) return;
         lastBeat[i] = shown;
@@ -300,6 +346,35 @@ export function Cinematic() {
           orn.style.transform = `translate3d(0, ${hidden * (rel > 0 ? -18 : 18)}px, 0)`;
           orn.style.visibility = vis;
         }
+      });
+
+      // Fruit, ice and water drop in one after another once the pack has
+      // landed, so the beat keeps giving after the product settles.
+      FLAVORS.forEach((_, i) => {
+        const rel = stage - 1 - i;
+        const pieces = GARNISH[i % GARNISH.length];
+        pieces.forEach((piece, j) => {
+          const el = garnishRefs.current[i]?.[j];
+          if (!el) return;
+          const from = -0.46 + piece.delay * 0.2;
+          const to = -0.16 + piece.delay * 0.2;
+          const land = clamp01((rel - from) / (to - from));
+          const appear = band(rel, from, to);
+          const leave = band(rel, 0.4 + piece.delay * 0.08, 0.72 + piece.delay * 0.08);
+          const vis = Math.round(Math.min(appear, 1 - leave) * 1000) / 1000;
+          const key = i * 100 + j;
+          if (lastGarnish[key] === vis) return;
+          lastGarnish[key] = vis;
+          const drop = easeBack(land);
+          const on = vis > 0.01;
+          el.style.opacity = String(vis);
+          el.style.visibility = on ? "visible" : "hidden";
+          el.dataset.garnish = on ? "on" : "off";
+          el.style.transform =
+            `translate3d(0, ${(1 - drop) * -110}px, 0) ` +
+            `rotate(${piece.rotate + (1 - drop) * -30}deg) ` +
+            `scale(${mix(0.55, 1, drop)})`;
+        });
       });
 
       renderer.render(scene, camera);
@@ -425,6 +500,51 @@ export function Cinematic() {
         ))}
 
         <div ref={mountRef} className="absolute inset-0" aria-hidden="true" />
+
+        {/* Fruit, ice and water, dropped in beside the pack. */}
+        {FLAVORS.map((flavor, i) => (
+          <div
+            key={`garnish-${flavor.id}`}
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 hidden md:block"
+          >
+            {GARNISH[i % GARNISH.length].map((piece, j) => (
+              <div
+                key={j}
+                ref={(el) => {
+                  garnishRefs.current[i][j] = el;
+                }}
+                className="absolute"
+                style={{
+                  left: `${piece.x}%`,
+                  top: `${piece.y}%`,
+                  width: `${piece.size}%`,
+                  opacity: 0,
+                  visibility: "hidden",
+                }}
+                data-garnish="off"
+              >
+                {/* The idle bob lives in CSS so it costs the render loop
+                    nothing once the piece has landed. */}
+                <div className="garnish-float" style={{ animationDelay: `${j * 0.9}s` }}>
+                  <svg viewBox="0 0 100 100" className="block h-auto w-full">
+                    {SHAPES[piece.kind].map((path, k) => (
+                      <path
+                        key={k}
+                        d={path.d}
+                        fill={path.stroke ? "none" : toneColor(path.tone, flavor)}
+                        stroke={path.stroke ? toneColor(path.tone, flavor) : "none"}
+                        strokeWidth={path.stroke ? (path.width ?? 3.5) : undefined}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    ))}
+                  </svg>
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
 
         {/* Blurb, top right. */}
         {FLAVORS.map((flavor, i) => (
