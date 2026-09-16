@@ -9,7 +9,7 @@ const TRANSPARENT =
 const ALL = [...FLAVORS, ...BOTTLES];
 
 export function ProductGrid() {
-  const { ref, shots, unavailable } = useThumbnails<HTMLElement>(ALL);
+  const { ref, shots, done } = useThumbnails<HTMLElement>(ALL);
 
   return (
     <section
@@ -55,7 +55,7 @@ export function ProductGrid() {
                 style={{ backgroundColor: product.accent }}
               >
                 <div className="mx-auto aspect-[440/760] w-40">
-                  {unavailable ? (
+                  {done && !shots?.get(product.id) ? (
                     <div className="mx-auto flex h-full w-28 items-center">
                       <ProductShape product={product} />
                     </div>
@@ -67,7 +67,7 @@ export function ProductGrid() {
                       alt={shots ? `Lowcaly ${product.name}` : ""}
                       width={440}
                       height={760}
-                      className="block h-full w-full transition-opacity duration-700"
+                      className="block h-full w-full object-contain transition-opacity duration-700"
                       style={{ opacity: shots ? 1 : 0 }}
                     />
                   )}

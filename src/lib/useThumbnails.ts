@@ -9,7 +9,7 @@ import { renderProductThumbnails } from "./thumbnails";
 export function useThumbnails<T extends HTMLElement>(products: Product[]) {
   const ref = useRef<T>(null);
   const [shots, setShots] = useState<Map<string, string> | null>(null);
-  const [unavailable, setUnavailable] = useState(false);
+  const [done, setDone] = useState(false);
 
   useEffect(() => {
     const el = ref.current;
@@ -24,13 +24,11 @@ export function useThumbnails<T extends HTMLElement>(products: Product[]) {
           map.forEach((url) => URL.revokeObjectURL(url));
           return;
         }
-        if (map.size === 0) {
-          // No WebGL context — the flat illustration is the only option.
-          setUnavailable(true);
-          return;
-        }
-        urls = [...map.values()];
+        // Only the rendered ones are object URLs; product shots are plain
+        // asset URLs and must not be revoked.
+        urls = [...map.values()].filter((url) => url.startsWith("blob:"));
         setShots(map);
+        setDone(true);
       });
     };
 
@@ -52,5 +50,5 @@ export function useThumbnails<T extends HTMLElement>(products: Product[]) {
     };
   }, [products]);
 
-  return { ref, shots, unavailable };
+  return { ref, shots, done };
 }

@@ -10,7 +10,7 @@ const TRANSPARENT =
  * the same range, laid out as a plain grid with no animation.
  */
 export function StaticRange() {
-  const { ref, shots, unavailable } = useThumbnails<HTMLElement>(FLAVORS);
+  const { ref, shots, done } = useThumbnails<HTMLElement>(FLAVORS);
 
   return (
     <section id="produkter" ref={ref} className="bg-cream px-6 pb-24 pt-32 md:px-12 md:pt-40">
@@ -35,7 +35,7 @@ export function StaticRange() {
                 style={{ backgroundColor: flavor.accent }}
               >
                 <div className="mx-auto aspect-[440/760] w-40">
-                  {unavailable ? (
+                  {done && !shots?.get(flavor.id) ? (
                     <div className="mx-auto flex h-full w-28 items-center">
                       <ProductShape product={flavor} />
                     </div>
@@ -47,7 +47,7 @@ export function StaticRange() {
                       alt={shots ? `Lowcaly ${flavor.name}` : ""}
                       width={440}
                       height={760}
-                      className="block h-full w-full transition-opacity duration-700"
+                      className="block h-full w-full object-contain transition-opacity duration-700"
                       style={{ opacity: shots ? 1 : 0 }}
                     />
                   )}

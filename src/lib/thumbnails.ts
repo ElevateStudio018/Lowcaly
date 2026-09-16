@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { Product } from "./flavors";
 import { buildCarton } from "./carton";
 import { buildBottle } from "./bottle";
+import { photoFor } from "./photos";
 
 const WIDTH = 440;
 const HEIGHT = 760;
@@ -16,6 +17,14 @@ export async function renderProductThumbnails(
 ): Promise<Map<string, string>> {
   const out = new Map<string, string>();
 
+  // Anything with a real product shot is already done.
+  const toRender = products.filter((product) => {
+    const photo = photoFor(product);
+    if (photo) out.set(product.id, photo);
+    return !photo;
+  });
+  if (toRender.length === 0) return out;
+
   let renderer: THREE.WebGLRenderer;
   try {
     renderer = new THREE.WebGLRenderer({
@@ -24,6 +33,7 @@ export async function renderProductThumbnails(
       preserveDrawingBuffer: true,
     });
   } catch {
+    // Keep whatever the shots covered; the caller draws the rest flat.
     return out;
   }
 
@@ -46,7 +56,7 @@ export async function renderProductThumbnails(
   // Labels are baked into textures, so wait for the display faces.
   await document.fonts?.ready;
 
-  for (const product of products) {
+  for (const product of toRender) {
     const built = product.shape === "bottle" ? buildBottle(product) : buildCarton(product);
     // Bottles are shorter than the litre cartons; match their on-card presence.
     built.group.scale.setScalar(product.shape === "bottle" ? 1.02 : 1);

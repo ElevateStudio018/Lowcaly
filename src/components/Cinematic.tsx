@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { FLAVORS } from "../lib/flavors";
 import { buildCarton } from "../lib/carton";
+import { buildPhoto, photoFor } from "../lib/photos";
 import { BLOBS, DOODLES, ORNAMENTS } from "../lib/art";
 import { StaticRange } from "./StaticRange";
 
@@ -117,9 +118,10 @@ export function Cinematic() {
     scene.add(key, fill, rim);
 
     const cartons = FLAVORS.map((flavor) => {
-      const built = buildCarton(flavor);
+      const photo = photoFor(flavor);
+      const built = photo ? buildPhoto(photo) : buildCarton(flavor);
       scene.add(built.group);
-      return built;
+      return { flat: false, ...built };
     });
 
     // Repaint the labels once the display faces arrive so a cold load never
@@ -218,9 +220,12 @@ export function Cinematic() {
           mix(heroY, storyY, blend) + floatY,
           mix(heroZ, storyZ, blend),
         );
+        // A photo is a flat plane, so yaw would turn it edge-on; keep just
+        // enough to read as a shift of perspective.
+        const yaw = carton.flat ? 0.18 : 1;
         carton.group.rotation.set(
-          pointer.y * 0.06,
-          mix(heroRotY, storyRotY, blend),
+          pointer.y * 0.06 * yaw,
+          mix(heroRotY, storyRotY, blend) * yaw,
           mix(0, storyRotZ, blend),
         );
         carton.group.scale.setScalar(mix(baseScale, storyScale, blend));
