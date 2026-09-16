@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import gsap from "gsap";
 import { FLAVORS } from "../lib/flavors";
 import { buildCarton } from "../lib/carton";
 import { StaticRange } from "./StaticRange";
@@ -28,21 +27,35 @@ const smooth = (v: number) => {
 const band = (v: number, from: number, to: number) => smooth((v - from) / (to - from));
 const mix = (a: number, b: number, t: number) => a + (b - a) * t;
 
+const rgbCache = new Map<string, [number, number, number]>();
+function rgb(hex: string): [number, number, number] {
+  let parsed = rgbCache.get(hex);
+  if (!parsed) {
+    const v = parseInt(hex.slice(1), 16);
+    parsed = [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+    rgbCache.set(hex, parsed);
+  }
+  return parsed;
+}
+
+/** sRGB blend between two hex colours, as a CSS colour string. */
+function mixHex(from: string, to: string, t: number) {
+  const a = rgb(from);
+  const b = rgb(to);
+  return `rgb(${Math.round(mix(a[0], b[0], t))},${Math.round(mix(a[1], b[1], t))},${Math.round(mix(a[2], b[2], t))})`;
+}
+
 /** Background colour for a point in the timeline, crossfading mid-transition. */
 function stageColor(stage: number) {
   if (stage <= 1) {
-    return gsap.utils.interpolate(CREAM, FLAVORS[0].accent, band(stage, 0.4, 1)) as string;
+    return mixHex(CREAM, FLAVORS[0].accent, band(stage, 0.4, 1));
   }
   const index = Math.min(Math.floor(stage - 1), COUNT - 1);
   const local = stage - 1 - index;
   // The last product hands the page back to cream so the section below it
   // starts on the colour it already has.
   const next = index === COUNT - 1 ? CREAM : FLAVORS[index + 1].accent;
-  return gsap.utils.interpolate(
-    FLAVORS[index].accent,
-    next,
-    band(local, 0.45, 0.95),
-  ) as string;
+  return mixHex(FLAVORS[index].accent, next, band(local, 0.45, 0.95));
 }
 
 export function Cinematic() {
