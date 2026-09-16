@@ -121,7 +121,7 @@ export function Cinematic() {
       const photo = photoFor(flavor);
       const built = photo ? buildPhoto(photo) : buildCarton(flavor);
       scene.add(built.group);
-      return { flat: false, ...built };
+      return built;
     });
 
     // Repaint the labels once the display faces arrive so a cold load never
@@ -174,7 +174,7 @@ export function Cinematic() {
       // The rest of the range parts and falls back so the first product is
       // alone on stage by the time the hand-off finishes.
       const parting = band(stage, 0.12, 0.62);
-      const spread = narrow ? 0.26 : 0.62;
+      const spread = narrow ? 0.26 : 0.7;
       const depth = narrow ? 0.5 : 0.3;
       const baseY = narrow ? -0.32 : -0.5;
       const baseScale = narrow ? 0.38 : 0.5;
@@ -193,7 +193,7 @@ export function Cinematic() {
         const heroX = centred * spread * (1 + part * 0.9);
         const heroY = baseY - part * 0.12;
         const heroZ = -Math.abs(centred) * depth - part * 1.4;
-        const heroRotY = centred * 0.16 + part * centred * 0.24;
+        const heroRotY = centred * 0.035 + part * centred * 0.24;
         const heroFade = 1 - part;
 
         // Story arrangement: the product tumbles in, settles at its lean, then
@@ -206,7 +206,11 @@ export function Cinematic() {
         const storyY = mix(-1.25, 0, enter) + mix(0, 1.05, exit) + restY;
         const storyZ = mix(-1.4, 0, enter);
         const storyRotZ = tilt + mix(-1, 0, enter) + mix(0, 0.9, exit);
-        const storyRotY = mix(0.7, 0, enter) + mix(0, -0.6, exit) + pointer.x * 0.2;
+        // The pack screws round into the frame and keeps turning on its way
+        // out — one continuous rotation, not a nudge and a nudge back. The
+        // swing is sized so the steepest angles land while it is still fading,
+        // and it reads near side-on at most while fully visible.
+        const storyRotY = mix(1.3, 0, enter) + mix(0, -1.1, exit) + pointer.x * 0.2;
         const storyScale = restScale * mix(0.7, 1, enter) * mix(1, 1.3, exit);
         const storyFade = Math.min(band(rel, -1, -0.58), 1 - band(rel, 0.58, 1));
 
@@ -220,12 +224,9 @@ export function Cinematic() {
           mix(heroY, storyY, blend) + floatY,
           mix(heroZ, storyZ, blend),
         );
-        // A photo is a flat plane, so yaw would turn it edge-on; keep just
-        // enough to read as a shift of perspective.
-        const yaw = carton.flat ? 0.18 : 1;
         carton.group.rotation.set(
-          pointer.y * 0.06 * yaw,
-          mix(heroRotY, storyRotY, blend) * yaw,
+          pointer.y * 0.06,
+          mix(heroRotY, storyRotY, blend),
           mix(0, storyRotZ, blend),
         );
         carton.group.scale.setScalar(mix(baseScale, storyScale, blend));
