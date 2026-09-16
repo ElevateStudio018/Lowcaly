@@ -9,6 +9,7 @@ import { renderProductThumbnails } from "./thumbnails";
 export function useThumbnails<T extends HTMLElement>(products: Product[]) {
   const ref = useRef<T>(null);
   const [shots, setShots] = useState<Map<string, string> | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
 
   useEffect(() => {
     const el = ref.current;
@@ -21,6 +22,11 @@ export function useThumbnails<T extends HTMLElement>(products: Product[]) {
       renderProductThumbnails(products).then((map) => {
         if (cancelled) {
           map.forEach((url) => URL.revokeObjectURL(url));
+          return;
+        }
+        if (map.size === 0) {
+          // No WebGL context — the flat illustration is the only option.
+          setUnavailable(true);
           return;
         }
         urls = [...map.values()];
@@ -46,5 +52,5 @@ export function useThumbnails<T extends HTMLElement>(products: Product[]) {
     };
   }, [products]);
 
-  return { ref, shots };
+  return { ref, shots, unavailable };
 }

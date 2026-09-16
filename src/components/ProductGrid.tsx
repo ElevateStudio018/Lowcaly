@@ -3,10 +3,13 @@ import { useThumbnails } from "../lib/useThumbnails";
 import { ProductShape } from "./ProductShape";
 import { Reveal } from "./Reveal";
 
+const TRANSPARENT =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
 const ALL = [...FLAVORS, ...BOTTLES];
 
 export function ProductGrid() {
-  const { ref, shots } = useThumbnails<HTMLElement>(ALL);
+  const { ref, shots, unavailable } = useThumbnails<HTMLElement>(ALL);
 
   return (
     <section
@@ -51,19 +54,22 @@ export function ProductGrid() {
                 className="w-full rounded-[1.5rem] px-6 py-6 transition-transform duration-700 ease-out group-hover:-translate-y-2"
                 style={{ backgroundColor: product.accent }}
               >
-                <div className="mx-auto w-40">
-                  {shots?.get(product.id) ? (
-                    <img
-                      src={shots.get(product.id)}
-                      alt={`Lowcaly ${product.name}`}
-                      width={440}
-                      height={760}
-                      className="block h-auto w-full"
-                    />
-                  ) : (
-                    <div className="mx-auto w-28 py-6">
+                <div className="mx-auto aspect-[440/760] w-40">
+                  {unavailable ? (
+                    <div className="mx-auto flex h-full w-28 items-center">
                       <ProductShape product={product} />
                     </div>
+                  ) : (
+                    // Space is reserved up front, so the product fades in
+                    // where it will sit rather than shifting the card.
+                    <img
+                      src={shots?.get(product.id) ?? TRANSPARENT}
+                      alt={shots ? `Lowcaly ${product.name}` : ""}
+                      width={440}
+                      height={760}
+                      className="block h-full w-full transition-opacity duration-700"
+                      style={{ opacity: shots ? 1 : 0 }}
+                    />
                   )}
                 </div>
               </div>

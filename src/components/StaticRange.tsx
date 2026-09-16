@@ -2,12 +2,15 @@ import { FLAVORS } from "../lib/flavors";
 import { useThumbnails } from "../lib/useThumbnails";
 import { ProductShape } from "./ProductShape";
 
+const TRANSPARENT =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
 /**
  * Stand-in for the scroll stage when motion is unwanted or WebGL is missing:
  * the same range, laid out as a plain grid with no animation.
  */
 export function StaticRange() {
-  const { ref, shots } = useThumbnails<HTMLElement>(FLAVORS);
+  const { ref, shots, unavailable } = useThumbnails<HTMLElement>(FLAVORS);
 
   return (
     <section id="produkter" ref={ref} className="bg-cream px-6 pb-24 pt-32 md:px-12 md:pt-40">
@@ -31,19 +34,22 @@ export function StaticRange() {
                 className="w-full rounded-[1.5rem] px-6 py-6"
                 style={{ backgroundColor: flavor.accent }}
               >
-                <div className="mx-auto w-40">
-                  {shots?.get(flavor.id) ? (
-                    <img
-                      src={shots.get(flavor.id)}
-                      alt={`Lowcaly ${flavor.name}`}
-                      width={440}
-                      height={760}
-                      className="block h-auto w-full"
-                    />
-                  ) : (
-                    <div className="mx-auto w-28 py-6">
+                <div className="mx-auto aspect-[440/760] w-40">
+                  {unavailable ? (
+                    <div className="mx-auto flex h-full w-28 items-center">
                       <ProductShape product={flavor} />
                     </div>
+                  ) : (
+                    // Space is reserved up front, so the product fades in
+                    // where it will sit rather than shifting the card.
+                    <img
+                      src={shots?.get(flavor.id) ?? TRANSPARENT}
+                      alt={shots ? `Lowcaly ${flavor.name}` : ""}
+                      width={440}
+                      height={760}
+                      className="block h-full w-full transition-opacity duration-700"
+                      style={{ opacity: shots ? 1 : 0 }}
+                    />
                   )}
                 </div>
               </div>
