@@ -14,6 +14,12 @@ const COUNT = FLAVORS.length;
  */
 const STAGES = COUNT + 0.7;
 
+/** World units spanned by the viewport at z = 0, for the camera below. */
+const VIEW_UNITS = 2 * 6.2 * Math.tan((38 / 2) * (Math.PI / 180));
+/** Idle float: a few pixels over a slow cycle, enough to feel alive. */
+const FLOAT_PX = 3;
+const FLOAT_PERIOD = 5;
+
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const smooth = (v: number) => {
   const t = clamp01(v);
@@ -122,6 +128,10 @@ export function Cinematic() {
 
     const clock = new THREE.Clock();
     let frame = 0;
+    // Style writes are the expensive part of the frame, so skip the ones that
+    // would not change anything — an idle page then costs almost nothing.
+    let lastBg = "";
+    const lastCopy = FLAVORS.map(() => -1);
 
     const draw = () => {
       const time = clock.elapsedTime;
@@ -174,7 +184,9 @@ export function Cinematic() {
         const storyFade = Math.min(band(rel, -1, -0.55), 1 - band(rel, 0.55, 1));
 
         const blend = stepForward;
-        const floatY = Math.sin(time * 0.55 + i) * 0.035;
+        const floatY =
+          Math.sin((time / FLOAT_PERIOD) * Math.PI * 2 + i) *
+          ((FLOAT_PX / height) * VIEW_UNITS);
 
         carton.group.position.set(
           mix(heroX, storyX, blend),
@@ -182,9 +194,9 @@ export function Cinematic() {
           mix(heroZ, storyZ, blend),
         );
         carton.group.rotation.set(
-          mix(0, 0, blend) + pointer.y * 0.06,
+          pointer.y * 0.06,
           mix(heroRotY, storyRotY, blend),
-          mix(0, storyRotZ, blend) + Math.sin(time * 0.4 + i) * 0.006,
+          mix(0, storyRotZ, blend) + Math.sin((time / FLOAT_PERIOD) * Math.PI * 1.6 + i) * 0.005,
         );
         const scale = mix(heroScale, storyScale, blend);
         carton.group.scale.setScalar(scale);
@@ -196,7 +208,11 @@ export function Cinematic() {
         });
       });
 
-      if (bgRef.current) bgRef.current.style.backgroundColor = stageColor(stage);
+      const bg = stageColor(stage);
+      if (bgRef.current && bg !== lastBg) {
+        bgRef.current.style.backgroundColor = bg;
+        lastBg = bg;
+      }
 
       // Hero copy dissolves into the first product.
       if (heroRef.current) {
@@ -214,7 +230,9 @@ export function Cinematic() {
         const rel = stage - 1 - i;
         const appear = band(rel, -0.55, -0.2);
         const leave = band(rel, 0.24, 0.52);
-        const shown = Math.min(appear, 1 - leave);
+        const shown = Math.round(Math.min(appear, 1 - leave) * 1000) / 1000;
+        if (shown === lastCopy[i]) return;
+        lastCopy[i] = shown;
         el.style.opacity = String(shown);
         el.style.transform = `translate3d(0, ${(1 - shown) * 26}px, 0)`;
         el.style.filter = `blur(${(1 - shown) * 7}px)`;
