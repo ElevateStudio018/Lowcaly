@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { FLAVORS } from "../lib/flavors";
 import { buildCarton } from "../lib/carton";
+import { BLOBS, DOODLES, ORNAMENTS } from "../lib/art";
 import { StaticRange } from "./StaticRange";
 
 const CREAM = "#faf0dd";
@@ -58,14 +59,21 @@ function stageColor(stage: number) {
   return mixHex(FLAVORS[index].accent, next, band(local, 0.45, 0.95));
 }
 
+/** Cartons alternate which way they lean, the way the reference tumbles. */
+const restTilt = (i: number) => (i % 2 === 0 ? 0.3 : -0.14);
+
 export function Cinematic() {
   const sectionRef = useRef<HTMLElement>(null);
-  const mountRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const mountRef = useRef<HTMLDivElement>(null);
   const bgRef = useRef<HTMLDivElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
   const hintRef = useRef<HTMLDivElement>(null);
-  const copyRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const nameRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const paraRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const railRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const decorRefs = useRef<(SVGSVGElement | null)[]>([]);
+  const ornRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [reduced, setReduced] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -144,7 +152,7 @@ export function Cinematic() {
     // Style writes are the expensive part of the frame, so skip the ones that
     // would not change anything — an idle page then costs almost nothing.
     let lastBg = "";
-    const lastCopy = FLAVORS.map(() => -1);
+    const lastBeat = FLAVORS.map(() => -1);
 
     const draw = () => {
       const time = clock.elapsedTime;
@@ -164,11 +172,15 @@ export function Cinematic() {
       // The rest of the range parts and falls back so the first product is
       // alone on stage by the time the hand-off finishes.
       const parting = band(stage, 0.12, 0.62);
-      const restX = narrow ? 0 : 0.62;
       const spread = narrow ? 0.26 : 0.62;
       const depth = narrow ? 0.5 : 0.3;
       const baseY = narrow ? -0.32 : -0.5;
       const baseScale = narrow ? 0.38 : 0.5;
+
+      // Where a product rests while it holds the stage.
+      const restX = narrow ? 0 : 0.1;
+      const restY = narrow ? -0.06 : 0;
+      const restScale = narrow ? 0.8 : 1.06;
 
       cartons.forEach((carton, i) => {
         const centred = i - (COUNT - 1) / 2;
@@ -180,21 +192,21 @@ export function Cinematic() {
         const heroY = baseY - part * 0.12;
         const heroZ = -Math.abs(centred) * depth - part * 1.4;
         const heroRotY = centred * 0.16 + part * centred * 0.24;
-        const heroScale = baseScale;
         const heroFade = 1 - part;
 
-        // Story arrangement: enters low and small, rises, leaves up and larger.
+        // Story arrangement: the product tumbles in, settles at its lean, then
+        // tumbles out larger — the beat the reference cuts on.
         const rel = stage - 1 - i;
         const enter = band(rel, -1, 0);
         const exit = band(rel, 0, 1);
-        const storyX = restX + (narrow ? 0 : mix(-0.35, 0.35, (enter + exit) / 2));
-        // Phones lift the product clear of the copy block beneath it.
-        const storyY = mix(-0.95, 0, enter) + mix(0, 0.7, exit) + (narrow ? 0.42 : 0);
-        const storyZ = mix(-1.1, 0, enter);
-        const storyRotZ = (mix(-0.09, 0, enter) + mix(0, 0.09, exit)) * (narrow ? 0.6 : 1);
-        const storyRotY = mix(0.5, 0, enter) + mix(0, -0.4, exit) + pointer.x * 0.22;
-        const storyScale = (narrow ? 0.86 : 1) * mix(0.75, 1, enter) * mix(1, 1.15, exit);
-        const storyFade = Math.min(band(rel, -1, -0.55), 1 - band(rel, 0.55, 1));
+        const tilt = restTilt(i) * (narrow ? 0.55 : 1);
+        const storyX = restX + mix(-0.55, 0.45, (enter + exit) / 2) * (narrow ? 0.2 : 1);
+        const storyY = mix(-1.25, 0, enter) + mix(0, 1.05, exit) + restY;
+        const storyZ = mix(-1.4, 0, enter);
+        const storyRotZ = tilt + mix(-1, 0, enter) + mix(0, 0.9, exit);
+        const storyRotY = mix(0.7, 0, enter) + mix(0, -0.6, exit) + pointer.x * 0.2;
+        const storyScale = restScale * mix(0.7, 1, enter) * mix(1, 1.3, exit);
+        const storyFade = Math.min(band(rel, -1, -0.58), 1 - band(rel, 0.58, 1));
 
         const blend = stepForward;
         const floatY =
@@ -209,10 +221,9 @@ export function Cinematic() {
         carton.group.rotation.set(
           pointer.y * 0.06,
           mix(heroRotY, storyRotY, blend),
-          mix(0, storyRotZ, blend) + Math.sin((time / FLOAT_PERIOD) * Math.PI * 1.6 + i) * 0.005,
+          mix(0, storyRotZ, blend),
         );
-        const scale = mix(heroScale, storyScale, blend);
-        carton.group.scale.setScalar(scale);
+        carton.group.scale.setScalar(mix(baseScale, storyScale, blend));
 
         const fade = mix(heroFade, storyFade, blend);
         carton.group.visible = fade > 0.015;
@@ -238,18 +249,51 @@ export function Cinematic() {
         hintRef.current.style.opacity = String(1 - band(stage, 0.02, 0.3));
       }
 
-      copyRefs.current.forEach((el, i) => {
-        if (!el) return;
+      FLAVORS.forEach((_, i) => {
         const rel = stage - 1 - i;
-        const appear = band(rel, -0.55, -0.2);
-        const leave = band(rel, 0.24, 0.52);
-        const shown = Math.round(Math.min(appear, 1 - leave) * 1000) / 1000;
-        if (shown === lastCopy[i]) return;
-        lastCopy[i] = shown;
-        el.style.opacity = String(shown);
-        el.style.transform = `translate3d(0, ${(1 - shown) * 26}px, 0)`;
-        el.style.filter = `blur(${(1 - shown) * 7}px)`;
-        el.style.visibility = shown > 0.01 ? "visible" : "hidden";
+        // Complementary bands: the outgoing copy is gone by the midpoint,
+        // where the incoming copy starts, so two names never overlap.
+        const shown = Math.round(
+          Math.min(band(rel, -0.5, -0.12), 1 - band(rel, 0.12, 0.5)) * 1000,
+        ) / 1000;
+        if (shown === lastBeat[i]) return;
+        lastBeat[i] = shown;
+        const hidden = 1 - shown;
+        const vis = shown > 0.01 ? "visible" : "hidden";
+
+        const name = nameRefs.current[i];
+        if (name) {
+          // The name slides against the product, the way the reference does.
+          name.style.opacity = String(shown);
+          name.style.transform = `translate3d(${hidden * (rel > 0 ? -90 : 90)}px, 0, 0)`;
+          name.style.visibility = vis;
+        }
+        const para = paraRefs.current[i];
+        if (para) {
+          para.style.opacity = String(shown);
+          para.style.transform = `translate3d(0, ${hidden * 24}px, 0)`;
+          para.style.filter = `blur(${hidden * 7}px)`;
+          para.style.visibility = vis;
+        }
+        const rail = railRefs.current[i];
+        if (rail) {
+          rail.style.opacity = String(shown);
+          rail.style.transform = `translate3d(0, ${hidden * 24}px, 0)`;
+          rail.style.filter = `blur(${hidden * 7}px)`;
+          rail.style.visibility = vis;
+        }
+        const decor = decorRefs.current[i];
+        if (decor) {
+          decor.style.opacity = String(shown);
+          decor.style.transform = `scale(${mix(0.88, 1, shown)}) rotate(${hidden * (rel > 0 ? -6 : 6)}deg)`;
+          decor.style.visibility = vis;
+        }
+        const orn = ornRefs.current[i];
+        if (orn) {
+          orn.style.opacity = String(shown * 0.85);
+          orn.style.transform = `translate3d(0, ${hidden * (rel > 0 ? -18 : 18)}px, 0)`;
+          orn.style.visibility = vis;
+        }
       });
 
       renderer.render(scene, camera);
@@ -288,14 +332,141 @@ export function Cinematic() {
     >
       <div ref={stageRef} className="sticky top-0 h-svh overflow-hidden">
         <div ref={bgRef} className="absolute inset-0" style={{ backgroundColor: CREAM }} />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(255,255,255,0.5),transparent_62%)]" />
+
+        {/* Shape and line marks, behind everything the product sits on. */}
+        {FLAVORS.map((flavor, i) => (
+          <svg
+            key={`decor-${flavor.id}`}
+            ref={(el) => {
+              decorRefs.current[i] = el;
+            }}
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 h-full w-full"
+            style={{ opacity: 0, visibility: "hidden" }}
+          >
+            <path
+              className="md:hidden"
+              d={BLOBS[i % BLOBS.length]}
+              fill={flavor.pop}
+              transform="translate(6.25 25) scale(0.4375 0.2)"
+            />
+            <path
+              className="hidden md:block"
+              d={BLOBS[i % BLOBS.length]}
+              fill={flavor.pop}
+              transform="translate(10.6 17.7) scale(0.27 0.33)"
+            />
+          </svg>
+        ))}
+
+        {/* Line marks keep their own square boxes so the stretched shape
+            behind them never squashes the drawing. */}
+        {FLAVORS.map((flavor, i) => (
+          <div
+            key={`orn-${flavor.id}`}
+            ref={(el) => {
+              ornRefs.current[i] = el;
+            }}
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 hidden md:block"
+            style={{ opacity: 0, visibility: "hidden" }}
+          >
+            {ORNAMENTS[i % ORNAMENTS.length].map((orn, j) => (
+              <svg
+                key={j}
+                viewBox="0 0 100 100"
+                className="absolute h-auto"
+                style={{
+                  left: `${orn.x}%`,
+                  top: `${orn.y}%`,
+                  width: `${orn.size}%`,
+                  transform: `rotate(${orn.rotate}deg)`,
+                }}
+              >
+                {DOODLES[orn.kind].map((d, k) => (
+                  <path
+                    key={k}
+                    d={d}
+                    fill="none"
+                    stroke="#0e3b2c"
+                    strokeWidth={2.6}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+              </svg>
+            ))}
+          </div>
+        ))}
+
+        {/* Flavour name — the product passes in front of it. */}
+        {FLAVORS.map((flavor, i) => (
+          <div
+            key={`name-${flavor.id}`}
+            ref={(el) => {
+              nameRefs.current[i] = el;
+            }}
+            className="pointer-events-none absolute inset-x-0 top-[9%] px-6 md:inset-x-auto md:left-[7%] md:top-[31%] md:px-0"
+            style={{ opacity: 0, visibility: "hidden" }}
+          >
+            <h2 className="font-grotesk whitespace-nowrap text-[12vw] font-extrabold leading-[0.9] tracking-[-0.045em] text-forest-deep md:text-[12vw]">
+              {flavor.name}
+            </h2>
+          </div>
+        ))}
+
         <div ref={mountRef} className="absolute inset-0" aria-hidden="true" />
+
+        {/* Blurb, top right. */}
+        {FLAVORS.map((flavor, i) => (
+          <div
+            key={`para-${flavor.id}`}
+            ref={(el) => {
+              paraRefs.current[i] = el;
+            }}
+            className="pointer-events-none absolute inset-x-6 top-[17.5%] md:inset-x-auto md:right-[7%] md:top-[21%] md:w-[26%] md:max-w-xs"
+            style={{ opacity: 0, visibility: "hidden" }}
+          >
+            <p className="font-grotesk max-w-[34ch] text-[0.84rem] leading-[1.5] text-forest-deep md:max-w-none md:text-[clamp(0.9rem,1.15vw,1.05rem)]">
+              {flavor.tagline}
+            </p>
+          </div>
+        ))}
+
+        {/* Volume and spec rail, bottom left. */}
+        {FLAVORS.map((flavor, i) => (
+          <div
+            key={`rail-${flavor.id}`}
+            ref={(el) => {
+              railRefs.current[i] = el;
+            }}
+            className="pointer-events-none absolute bottom-[5%] left-6 w-[62%] max-w-[16rem] md:bottom-[11%] md:left-[7%] md:w-[17%]"
+            style={{ opacity: 0, visibility: "hidden" }}
+          >
+            <p className="font-grotesk text-[1.15rem] font-bold leading-none text-forest-deep md:text-[clamp(1.25rem,2.1vw,1.9rem)]">
+              {flavor.specs[0]}
+            </p>
+            <ul className="mt-3 md:mt-5">
+              {flavor.rows.map((row) => (
+                <li
+                  key={row}
+                  className="font-grotesk border-t border-forest-deep/25 py-2 text-[0.78rem] leading-[1.35] text-forest-deep md:py-3 md:text-[clamp(0.78rem,1.05vw,0.95rem)]"
+                >
+                  {row}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
 
         <div
           ref={heroRef}
           className="pointer-events-none absolute inset-x-0 top-[15%] px-6 text-center md:top-[16%] md:px-12"
         >
-          <p className="font-body mb-5 text-[0.65rem] font-bold uppercase tracking-[0.42em] text-forest/55">
+          <p className="font-grotesk mb-5 text-[0.65rem] font-bold uppercase tracking-[0.42em] text-forest/55">
             Sockerfri fruktdryck
           </p>
           <h1 className="font-display mx-auto max-w-4xl text-[clamp(2.6rem,7.5vw,6rem)] leading-[0.92] text-forest">
@@ -305,39 +476,9 @@ export function Cinematic() {
           </h1>
         </div>
 
-        {FLAVORS.map((flavor, i) => (
-          <div
-            key={flavor.id}
-            ref={(el) => {
-              copyRefs.current[i] = el;
-            }}
-            className="pointer-events-none absolute inset-x-0 bottom-20 px-6 md:bottom-0 md:top-0 md:flex md:items-center md:px-12"
-            style={{ opacity: 0 }}
-          >
-            <div className="mx-auto w-full max-w-6xl">
-              <div className="md:max-w-sm">
-                <p className="font-body text-[0.65rem] font-bold uppercase tracking-[0.42em] text-forest/50">
-                  Lowcaly
-                </p>
-                <h2 className="font-display mt-3 text-[clamp(2.4rem,6vw,4.5rem)] leading-[0.95] text-forest">
-                  {flavor.name}
-                </h2>
-                <p className="font-serif mt-4 text-lg italic leading-relaxed text-forest/75">
-                  {flavor.tagline}
-                </p>
-                <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-xs font-bold uppercase tracking-[0.18em] text-forest/55">
-                  {flavor.specs.map((spec) => (
-                    <li key={spec}>{spec}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        ))}
-
         <div
           ref={hintRef}
-          className="pointer-events-none absolute inset-x-0 bottom-8 text-center font-body text-[0.6rem] font-bold uppercase tracking-[0.42em] text-forest/40"
+          className="font-grotesk pointer-events-none absolute inset-x-0 bottom-8 text-center text-[0.6rem] font-bold uppercase tracking-[0.42em] text-forest/40"
         >
           Scrolla
         </div>
