@@ -18,7 +18,7 @@ const ITEMS = [
 
 export function ContentStrip() {
   return (
-    <section className="bg-cream-soft px-6 py-24">
+    <section id="inspiration" className="bg-cream-soft px-6 py-28 md:px-12 md:py-32">
       <div className="mx-auto max-w-6xl">
         <div className="mb-12 flex flex-wrap items-end justify-between gap-4">
           <h2 className="font-display text-4xl text-forest md:text-5xl">Recept &amp; inspiration</h2>

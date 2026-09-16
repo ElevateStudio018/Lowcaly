@@ -101,7 +101,7 @@ export function Comparison() {
   }, []);
 
   return (
-    <section ref={ref} className="bg-cream px-6 py-24">
+    <section id="jamfor" ref={ref} className="bg-cream px-6 py-28 md:py-32">
       <div className="mx-auto max-w-4xl text-center">
         <p className="font-body mb-3 text-xs font-bold uppercase tracking-widest text-forest/60">
           Varför Lowcaly

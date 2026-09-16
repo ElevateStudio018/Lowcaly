@@ -1,18 +1,24 @@
 import { Header } from "./components/Header";
-import { Hero } from "./components/Hero";
-import { FlavorScroll } from "./components/FlavorScroll";
+import { Cinematic } from "./components/Cinematic";
+import { About } from "./components/About";
+import { Ingredients } from "./components/Ingredients";
+import { ProductGrid } from "./components/ProductGrid";
 import { Comparison } from "./components/Comparison";
+import { WhereToBuy } from "./components/WhereToBuy";
 import { ContentStrip } from "./components/ContentStrip";
 import { Footer } from "./components/Footer";
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-cream text-forest">
+    <div id="top" className="min-h-screen bg-cream text-forest">
       <Header />
       <main>
-        <Hero />
-        <FlavorScroll />
+        <Cinematic />
+        <About />
+        <Ingredients />
+        <ProductGrid />
         <Comparison />
+        <WhereToBuy />
         <ContentStrip />
       </main>
       <Footer />

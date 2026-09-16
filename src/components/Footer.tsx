@@ -1,11 +1,11 @@
 import { Facebook, Instagram, Linkedin, Send } from "lucide-react";
 
 const FOOTER_LINKS = [
+  { href: "#om", label: "Om Lowcaly" },
+  { href: "#ingredienser", label: "Ingredienser" },
+  { href: "#sortiment", label: "Sortiment" },
+  { href: "#kop", label: "Var du hittar oss" },
   { href: "#inspiration", label: "Recept" },
-  { href: "#inspiration", label: "Artiklar" },
-  { href: "#top", label: "Om Lowcaly" },
-  { href: "#produkter", label: "Produkter" },
-  { href: "#", label: "Cookiepolicy" },
 ];
 
 const SOCIALS = [
