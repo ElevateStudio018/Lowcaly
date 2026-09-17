@@ -18,6 +18,11 @@ const ICE_SPAN = (ICE_END - ICE_START) / CUBE_COUNT;
 const FALL_SHARE = 0.42;
 /** How long a splash ring stays on screen, in progress units. */
 const SPLASH_LIFE = 0.05;
+/** Crown spikes and flying droplets live a little longer than the flat ring. */
+const CROWN_LIFE = 0.085;
+const DROPLET_LIFE = 0.12;
+const CROWN_COUNT = 8;
+const DROPLET_COUNT = 7;
 
 const GLASS_R_TOP = 0.34;
 const GLASS_R_BOTTOM = 0.29;
@@ -34,6 +39,12 @@ const band = (v: number, from: number, to: number) => smooth((v - from) / (to - 
 const mix = (a: number, b: number, t: number) => a + (b - a) * t;
 const easeIn = (v: number) => Math.pow(clamp01(v), 2);
 const easeOut = (v: number) => 1 - Math.pow(1 - clamp01(v), 2.2);
+/** Deterministic pseudo-random in [0,1) — a fixed function of the seed, not
+ *  Math.random(), so a splash looks identical however the scroll scrubs. */
+const pseudo = (seed: number) => {
+  const x = Math.sin(seed * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+};
 
 /** Small canvas-drawn spiral, used as the swirl disc's texture. */
 function swirlTexture(color: string) {
@@ -209,6 +220,66 @@ export function buildPour(liquidColor: string, liquidDeep: string) {
     rings.push(ring);
   }
 
+  // A splash reads as a crown of water thrown up around the impact point
+  // plus a scatter of droplets arcing clear of the glass — the flat ring
+  // above is just the ripple; this is the part that actually sells "splash".
+  // White rather than a tint of the juice: lerping the liquid colour toward
+  // white in Three's linear working space came out pink, not the pale foam
+  // a real splash throws up, and a plain white also reads at a glance next
+  // to a pack that already carries all the mango colour the scene needs.
+  const crownMaterial = () =>
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+  const crownGeometry = new THREE.ConeGeometry(0.032, 0.26, 5);
+  const crownMaterials: THREE.MeshBasicMaterial[][] = [];
+  const crowns: THREE.Mesh[][] = [];
+
+  const dropletMaterial = () =>
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+  const dropletGeometry = new THREE.SphereGeometry(0.034, 6, 5);
+  const dropletMaterials: THREE.MeshBasicMaterial[][] = [];
+  const droplets: THREE.Mesh[][] = [];
+
+  for (let i = 0; i < CUBE_COUNT; i++) {
+    const cMats: THREE.MeshBasicMaterial[] = [];
+    const cMeshes: THREE.Mesh[] = [];
+    for (let j = 0; j < CROWN_COUNT; j++) {
+      const material = crownMaterial();
+      cMats.push(material);
+      const mesh = new THREE.Mesh(crownGeometry, material);
+      mesh.visible = false;
+      group.add(mesh);
+      cMeshes.push(mesh);
+    }
+    crownMaterials.push(cMats);
+    crowns.push(cMeshes);
+
+    const dMats: THREE.MeshBasicMaterial[] = [];
+    const dMeshes: THREE.Mesh[] = [];
+    for (let k = 0; k < DROPLET_COUNT; k++) {
+      const material = dropletMaterial();
+      dMats.push(material);
+      const mesh = new THREE.Mesh(dropletGeometry, material);
+      mesh.visible = false;
+      const scale = mix(0.55, 1, pseudo(i * 23 + k * 11 + 2));
+      mesh.scale.setScalar(scale);
+      group.add(mesh);
+      dMeshes.push(mesh);
+    }
+    dropletMaterials.push(dMats);
+    droplets.push(dMeshes);
+  }
+
   let swirlAngle = 0;
 
   /**
@@ -280,6 +351,67 @@ export function buildPour(liquidColor: string, liquidDeep: string) {
       } else {
         ring.visible = false;
       }
+
+      // Crown: a ring of spikes thrown up from the impact point, rising fast
+      // and settling back down as they fade — the part of a splash that
+      // actually reads as "something hit the liquid" rather than a ripple.
+      const surfaceY = glassBottomY + level;
+      const crownT = clamp01((p - fallEnd) / CROWN_LIFE);
+      const crownActive = crownT < 1 && p >= fallEnd;
+      for (let j = 0; j < CROWN_COUNT; j++) {
+        const shard = crowns[i][j];
+        shard.visible = crownActive;
+        if (!crownActive) continue;
+        const shardMat = crownMaterials[i][j];
+        const jitter = pseudo(i * 7 + j * 5 + 3);
+        const angle = (j / CROWN_COUNT) * Math.PI * 2 + i * 0.9 + jitter * 0.5;
+        const riseT = easeOut(clamp01(crownT / 0.35));
+        const fadeT = band(crownT, 0.5, 1);
+        const heightScale = riseT * (1 - fadeT * 0.85);
+        const outward = LIQUID_R * mix(0.58, 0.92, riseT) * mix(0.85, 1.15, jitter);
+        const rise = mix(0, 0.15, riseT) * (1 - fadeT * 0.6);
+        shard.position.set(
+          spot.x + Math.cos(angle) * outward,
+          surfaceY + 0.09 * heightScale + rise,
+          spot.z + Math.sin(angle) * outward,
+        );
+        // Point outward and up rather than straight up, like water thrown
+        // clear of the impact rather than a fountain jet.
+        shard.rotation.set(0, -angle, Math.PI * 0.16 * mix(0.6, 1, jitter));
+        shard.scale.set(1, Math.max(heightScale, 0.001), 1);
+        shardMat.opacity = riseT * (1 - fadeT) * sceneFade;
+        splashKick += (1 - crownT) * 0.5;
+      }
+
+      // Droplets: thrown clear on a simple parabola (up then back down to
+      // the surface, guaranteed to land exactly as its life ends) rather
+      // than simulated gravity, so scrubbing the scroll never leaves one
+      // stranded mid-air.
+      const dropT = clamp01((p - fallEnd) / DROPLET_LIFE);
+      const dropletsActive = dropT < 1 && p >= fallEnd;
+      for (let k = 0; k < DROPLET_COUNT; k++) {
+        const drop = droplets[i][k];
+        drop.visible = dropletsActive;
+        if (!dropletsActive) continue;
+        const dropMat = dropletMaterials[i][k];
+        const rA = pseudo(i * 31 + k * 7);
+        const rB = pseudo(i * 17 + k * 3 + 1);
+        const rC = pseudo(i * 23 + k * 11 + 2);
+        const angle = (k / DROPLET_COUNT) * Math.PI * 2 + i * 1.3 + rA * 0.7;
+        const peakRise = mix(0.16, 0.4, rB);
+        const maxDist = mix(0.14, 0.34, rC);
+        const arc = 4 * dropT * (1 - dropT); // 0 -> 1 -> 0 across the life
+        const outward = maxDist * easeOut(dropT);
+        drop.position.set(
+          spot.x + Math.cos(angle) * outward,
+          surfaceY + peakRise * arc,
+          spot.z + Math.sin(angle) * outward,
+        );
+        const fadeIn = band(dropT, 0, 0.1);
+        const fadeOut = 1 - band(dropT, 0.75, 1);
+        dropMat.opacity = fadeIn * fadeOut * sceneFade;
+      }
+
       if (local >= 1) topLevel = Math.max(topLevel, level);
     });
 
@@ -317,6 +449,10 @@ export function buildPour(liquidColor: string, liquidDeep: string) {
     cubeMaterials.forEach((m) => m.dispose());
     ringGeometry.dispose();
     ringMaterials.forEach((m) => m.dispose());
+    crownGeometry.dispose();
+    crownMaterials.forEach((row) => row.forEach((m) => m.dispose()));
+    dropletGeometry.dispose();
+    dropletMaterials.forEach((row) => row.forEach((m) => m.dispose()));
   }
 
   return { group, update, dispose };
