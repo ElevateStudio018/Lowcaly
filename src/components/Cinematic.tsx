@@ -23,10 +23,11 @@ const FLOAT_PX = 3;
 const FLOAT_PERIOD = 5;
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
-/** Fast off the mark, settling into place — how a product lands. */
-const easeOut = (v: number) => 1 - Math.pow(1 - clamp01(v), 3);
+/** Settles into place. Cubed put half the travel in the first fifth, which
+ *  read as a snap rather than an arrival. */
+const easeOut = (v: number) => 1 - Math.pow(1 - clamp01(v), 2);
 /** Slow to leave, then gone — how a product is whipped away. */
-const easeIn = (v: number) => Math.pow(clamp01(v), 2.4);
+const easeIn = (v: number) => Math.pow(clamp01(v), 2.2);
 /** Overshoots slightly, so a piece lands rather than glides to a stop. */
 const easeBack = (v: number) => {
   const c = 1.7;
@@ -242,11 +243,11 @@ export function Cinematic() {
         // Story arrangement: the product tumbles in, settles at its lean, then
         // tumbles out larger — the beat the reference cuts on.
         const rel = stage - 1 - i;
-        // The reference holds each product still for most of its beat and
-        // spends the rest on a quick hand-off. Moving the whole way across,
-        // as this did, made every flavour arrive at the same lukewarm speed.
-        const enter = easeOut((rel + 0.85) / 0.55);
-        const exit = easeIn((rel - 0.3) / 0.55);
+        // One product owns the frame at a time. Its whole life runs inside
+        // half a stage either side of its mark, so the outgoing pack is gone
+        // by the exact moment the next one starts — they never share a frame.
+        const enter = easeOut((rel + 0.5) / 0.34);
+        const exit = easeIn((rel - 0.16) / 0.34);
         const tilt = restTilt(i) * (narrow ? 0.55 : 1);
         const storyX = restX + mix(-0.55, 0.45, (enter + exit) / 2) * (narrow ? 0.2 : 1);
         const storyY = mix(-1.25, 0, enter) + mix(0, 1.05, exit) + restY;
@@ -258,7 +259,7 @@ export function Cinematic() {
         // and it reads near side-on at most while fully visible.
         const storyRotY = mix(1.3, 0, enter) + mix(0, -1.1, exit) + pointer.x * 0.2;
         const storyScale = restScale * mix(0.7, 1, enter) * mix(1, 1.3, exit);
-        const storyFade = Math.min(band(rel, -0.85, -0.55), 1 - band(rel, 0.55, 0.85));
+        const storyFade = Math.min(band(rel, -0.5, -0.42), 1 - band(rel, 0.42, 0.5));
 
         const blend = stepForward;
         const floatY =
@@ -306,7 +307,7 @@ export function Cinematic() {
         // Complementary bands: the outgoing copy is gone by the midpoint,
         // where the incoming copy starts, so two names never overlap.
         const shown = Math.round(
-          Math.min(band(rel, -0.46, -0.26), 1 - band(rel, 0.26, 0.46)) * 1000,
+          Math.min(band(rel, -0.44, -0.2), 1 - band(rel, 0.2, 0.44)) * 1000,
         ) / 1000;
         if (shown === lastBeat[i]) return;
         lastBeat[i] = shown;
@@ -356,11 +357,11 @@ export function Cinematic() {
         pieces.forEach((piece, j) => {
           const el = garnishRefs.current[i]?.[j];
           if (!el) return;
-          const from = -0.46 + piece.delay * 0.2;
-          const to = -0.16 + piece.delay * 0.2;
+          const from = -0.44 + piece.delay * 0.18;
+          const to = -0.14 + piece.delay * 0.18;
           const land = clamp01((rel - from) / (to - from));
           const appear = band(rel, from, to);
-          const leave = band(rel, 0.4 + piece.delay * 0.08, 0.72 + piece.delay * 0.08);
+          const leave = band(rel, 0.26 + piece.delay * 0.05, 0.44 + piece.delay * 0.05);
           const vis = Math.round(Math.min(appear, 1 - leave) * 1000) / 1000;
           const key = i * 100 + j;
           if (lastGarnish[key] === vis) return;

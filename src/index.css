@@ -61,14 +61,15 @@
 }
 
 :root {
-  /* Viewport heights of scroll travel per stage of the cinematic section. */
-  --stage-step: 100;
+  /* Viewport heights of scroll travel per stage of the cinematic section.
+     Every beat is paced off this, so raising it slows the whole sequence. */
+  --stage-step: 160;
 }
 
 @media (max-width: 767px) {
   :root {
     /* Shorter sticky scroll on phones — the same beats, less thumb work. */
-    --stage-step: 72;
+    --stage-step: 110;
   }
 }
 
