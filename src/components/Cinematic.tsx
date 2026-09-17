@@ -34,6 +34,12 @@ const easeBack = (v: number) => {
   const u = clamp01(v) - 1;
   return 1 + (c + 1) * u * u * u + c * u * u;
 };
+/** The same idea with far less bounce — a litre of juice has weight. */
+const easeSettle = (v: number) => {
+  const c = 0.7;
+  const u = clamp01(v) - 1;
+  return 1 + (c + 1) * u * u * u + c * u * u;
+};
 const smooth = (v: number) => {
   const t = clamp01(v);
   return t * t * (3 - 2 * t);
@@ -102,6 +108,30 @@ function toneColor(tone: Tone, flavor: (typeof FLAVORS)[number]) {
   }
 }
 
+/**
+ * Soft elliptical blot used to anchor a pack. Nothing here casts a real
+ * shadow, and a product floating with no contact is the loudest tell that
+ * it was pasted in rather than photographed.
+ */
+function shadowTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    grad.addColorStop(0, "rgba(0,0,0,0.9)");
+    grad.addColorStop(0.35, "rgba(0,0,0,0.62)");
+    grad.addColorStop(0.7, "rgba(0,0,0,0.22)");
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 /** Cartons alternate which way they lean, the way the reference tumbles. */
 const restTilt = (i: number) => (i % 2 === 0 ? 0.3 : -0.14);
 
@@ -160,11 +190,27 @@ export function Cinematic() {
     rim.position.set(-1, 2, -4);
     scene.add(key, fill, rim);
 
+    const shadowMap = shadowTexture();
+    const shadowGeometry = new THREE.PlaneGeometry(1, 1);
+
     const cartons = FLAVORS.map((flavor) => {
       const photo = photoFor(flavor);
       const built = photo ? buildPhoto(photo) : buildCarton(flavor);
       scene.add(built.group);
-      return built;
+
+      const shadowMaterial = new THREE.MeshBasicMaterial({
+        map: shadowMap,
+        transparent: true,
+        depthWrite: false,
+        opacity: 0,
+      });
+      const shadow = new THREE.Mesh(shadowGeometry, shadowMaterial);
+      // Behind the pack, so it never draws over it.
+      shadow.position.z = -0.6;
+      shadow.renderOrder = -1;
+      scene.add(shadow);
+
+      return { ...built, shadow, shadowMaterial };
     });
 
     // Repaint the labels once the display faces arrive so a cold load never
@@ -194,6 +240,9 @@ export function Cinematic() {
 
     const clock = new THREE.Clock();
     let frame = 0;
+    // Raw scroll drives the animation one to one, which makes a fast flick
+    // snap. A damped follower gives the sequence some weight.
+    let smoothed = -1;
     // Style writes are the expensive part of the frame, so skip the ones that
     // would not change anything — an idle page then costs almost nothing.
     let lastBg = "";
@@ -201,6 +250,9 @@ export function Cinematic() {
     const lastGarnish: Record<number, number> = {};
 
     const draw = () => {
+      // getDelta also advances elapsedTime; without it the clock never ran
+      // and every idle float was frozen at its starting offset.
+      const delta = Math.min(clock.getDelta(), 0.1);
       const time = clock.elapsedTime;
       const narrow = width / height < 0.85;
 
@@ -208,7 +260,11 @@ export function Cinematic() {
       const viewport = stageRef.current?.clientHeight || window.innerHeight;
       const travel = rect.height - viewport;
       const progress = travel > 0 ? clamp01(-rect.top / travel) : 0;
-      const stage = progress * STAGES;
+      const target = progress * STAGES;
+      // Frame-rate independent, and seeded on the first frame so a deep link
+      // does not play the whole sequence catching up.
+      smoothed = smoothed < 0 ? target : smoothed + (target - smoothed) * (1 - Math.exp(-11 * delta));
+      const stage = smoothed;
 
       pointer.x += (pointerTarget.x - pointer.x) * 0.05;
       pointer.y += (pointerTarget.y - pointer.y) * 0.05;
@@ -246,18 +302,25 @@ export function Cinematic() {
         // One product owns the frame at a time. Its whole life runs inside
         // half a stage either side of its mark, so the outgoing pack is gone
         // by the exact moment the next one starts — they never share a frame.
-        const enter = easeOut((rel + 0.5) / 0.34);
+        const raw = (rel + 0.5) / 0.34;
+        const enter = easeOut(raw);
+        // Overlapping action: the pack overshoots its mark and settles, and
+        // its turn finishes a beat after it has stopped travelling. Moving
+        // every property on one curve is what reads as machinery.
+        const enterPos = easeSettle(raw);
+        const enterTurn = easeOut((raw - 0.14) / 0.86);
         const exit = easeIn((rel - 0.16) / 0.34);
+        const exitTurn = easeIn((rel - 0.1) / 0.34);
         const tilt = restTilt(i) * (narrow ? 0.55 : 1);
-        const storyX = restX + mix(-0.55, 0.45, (enter + exit) / 2) * (narrow ? 0.2 : 1);
-        const storyY = mix(-1.25, 0, enter) + mix(0, 1.05, exit) + restY;
+        const storyX = restX + mix(-0.55, 0.45, (enterPos + exit) / 2) * (narrow ? 0.2 : 1);
+        const storyY = mix(-1.25, 0, enterPos) + mix(0, 1.05, exit) + restY;
         const storyZ = mix(-1.4, 0, enter);
-        const storyRotZ = tilt + mix(-1, 0, enter) + mix(0, 0.9, exit);
+        const storyRotZ = tilt + mix(-1, 0, enterTurn) + mix(0, 0.9, exitTurn);
         // The pack screws round into the frame and keeps turning on its way
         // out — one continuous rotation, not a nudge and a nudge back. The
         // swing is sized so the steepest angles land while it is still fading,
         // and it reads near side-on at most while fully visible.
-        const storyRotY = mix(1.3, 0, enter) + mix(0, -1.1, exit) + pointer.x * 0.2;
+        const storyRotY = mix(1.3, 0, enterTurn) + mix(0, -1.1, exitTurn) + pointer.x * 0.2;
         const storyScale = restScale * mix(0.7, 1, enter) * mix(1, 1.3, exit);
         const storyFade = Math.min(band(rel, -0.5, -0.42), 1 - band(rel, 0.42, 0.5));
 
@@ -283,6 +346,21 @@ export function Cinematic() {
         carton.materials.forEach((material) => {
           material.opacity = fade;
         });
+
+        // Cast onto the backdrop rather than onto a floor: the pack floats in
+        // a colour field, so a ground contact would be a lie. It sits down and
+        // left of the pack, away from the key light, and roughly its shape.
+        const scale = carton.group.scale.x;
+        const lean = carton.group.rotation.z;
+        carton.shadow.visible = fade > 0.015;
+        carton.shadow.position.set(
+          carton.group.position.x - 0.46 * scale,
+          carton.group.position.y - 0.38 * scale,
+          -0.5,
+        );
+        carton.shadow.scale.set(scale * 1.5, scale * 2.6, 1);
+        carton.shadow.rotation.z = lean * 0.9;
+        carton.shadowMaterial.opacity = fade * 0.26;
       });
 
       const bg = stageColor(stage);
@@ -393,7 +471,10 @@ export function Cinematic() {
         carton.geometries.forEach((geometry) => geometry.dispose());
         carton.materials.forEach((material) => material.dispose());
         carton.textures.forEach((texture) => texture.dispose());
+        carton.shadowMaterial.dispose();
       });
+      shadowGeometry.dispose();
+      shadowMap.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement);
