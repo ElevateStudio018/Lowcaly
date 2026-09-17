@@ -5,16 +5,31 @@ import { buildCarton } from "../lib/carton";
 import { buildPhoto, photoFor } from "../lib/photos";
 import { BLOBS, DOODLES, ORNAMENTS } from "../lib/art";
 import { GARNISH, SHAPES, type Tone } from "../lib/garnish";
+import { buildPour } from "../lib/pour";
 import { StaticRange } from "./StaticRange";
 
 const CREAM = "#faf0dd";
 const COUNT = FLAVORS.length;
+const MANGO_INDEX = COUNT - 1;
+/** Where a product's own exit curve would normally start, in `rel` units. */
+const EXIT_START = 0.16;
+
+// The mango finale replaces the generic exit: instead of flying away it
+// tips into a pour, a glass fills, five ice cubes drop in, then it fades.
+// Every number below is in the same `rel` units as EXIT_START.
+const FINALE_TILT = 0.5;
+const FINALE_PAUSE = 0.12;
+const FINALE_POUR = 1.85;
+const FINALE_OUT = 0.35;
+const FINALE_SPAN = FINALE_TILT + FINALE_PAUSE + FINALE_POUR + FINALE_OUT;
+
 /**
- * One viewport for the hero, then one per product. The tail is clipped short
- * of a full stage so the last carton is still leaving as the sticky releases,
- * instead of the section ending on an empty screen.
+ * One viewport for the hero, then one per product. The last product gets
+ * the finale's extra room instead of the short generic tail the others get,
+ * so it is still mid-pour as the sticky releases rather than the section
+ * ending on an empty screen.
  */
-const STAGES = COUNT + 0.7;
+const STAGES = COUNT + EXIT_START + FINALE_SPAN + 0.08;
 
 /** World units spanned by the viewport at z = 0, for the camera below. */
 const VIEW_UNITS = 2 * 6.2 * Math.tan((38 / 2) * (Math.PI / 180));
@@ -72,10 +87,13 @@ function stageColor(stage: number) {
   }
   const index = Math.min(Math.floor(stage - 1), COUNT - 1);
   const local = stage - 1 - index;
+  const isFinale = index === COUNT - 1;
   // The last product hands the page back to cream so the section below it
-  // starts on the colour it already has.
-  const next = index === COUNT - 1 ? CREAM : FLAVORS[index + 1].accent;
-  return mixHex(FLAVORS[index].accent, next, band(local, 0.45, 0.95));
+  // starts on the colour it already has — but only once the finale is
+  // actually winding down, not the moment its normal beat would have ended.
+  const next = isFinale ? CREAM : FLAVORS[index + 1].accent;
+  const fadeEnd = isFinale ? EXIT_START + FINALE_SPAN - FINALE_OUT * 0.4 : 0.95;
+  return mixHex(FLAVORS[index].accent, next, band(local, 0.45, fadeEnd));
 }
 
 /** Darkens a hex toward the brand green, for the shaded side of a fruit. */
@@ -213,6 +231,12 @@ export function Cinematic() {
       return { ...built, shadow, shadowMaterial };
     });
 
+    // The finale: mango tips into pouring instead of flying off like the
+    // others. Built once, up front, so it is ready the moment it is needed.
+    const mangoFlavor = FLAVORS[MANGO_INDEX];
+    const pour = buildPour(mangoFlavor.pop, mangoFlavor.accentDeep);
+    scene.add(pour.group);
+
     // Repaint the labels once the display faces arrive so a cold load never
     // bakes fallback type into the textures.
     let disposed = false;
@@ -285,6 +309,7 @@ export function Cinematic() {
       const restScale = narrow ? 0.8 : 1.06;
 
       cartons.forEach((carton, i) => {
+        const isMango = i === MANGO_INDEX;
         const centred = i - (COUNT - 1) / 2;
         const part = i === 0 ? 0 : parting;
 
@@ -309,39 +334,77 @@ export function Cinematic() {
         // every property on one curve is what reads as machinery.
         const enterPos = easeSettle(raw);
         const enterTurn = easeOut((raw - 0.14) / 0.86);
-        const exit = easeIn((rel - 0.16) / 0.34);
-        const exitTurn = easeIn((rel - 0.1) / 0.34);
+        // Mango never runs the generic exit — past this point it holds its
+        // settled pose and the finale below takes over entirely, tipping it
+        // toward the glass instead of flying it off screen.
+        const exit = isMango ? 0 : easeIn((rel - 0.16) / 0.34);
+        const exitTurn = isMango ? 0 : easeIn((rel - 0.1) / 0.34);
         const tilt = restTilt(i) * (narrow ? 0.55 : 1);
         const storyX = restX + mix(-0.55, 0.45, (enterPos + exit) / 2) * (narrow ? 0.2 : 1);
         const storyY = mix(-1.25, 0, enterPos) + mix(0, 1.05, exit) + restY;
         const storyZ = mix(-1.4, 0, enter);
-        const storyRotZ = tilt + mix(-1, 0, enterTurn) + mix(0, 0.9, exitTurn);
-        // The pack screws round into the frame and keeps turning on its way
-        // out — one continuous rotation, not a nudge and a nudge back. The
-        // swing is sized so the steepest angles land while it is still fading,
-        // and it reads near side-on at most while fully visible.
-        const storyRotY = mix(1.3, 0, enterTurn) + mix(0, -1.1, exitTurn) + pointer.x * 0.2;
-        const storyScale = restScale * mix(0.7, 1, enter) * mix(1, 1.3, exit);
-        const storyFade = Math.min(band(rel, -0.5, -0.42), 1 - band(rel, 0.42, 0.5));
+        const storyRotZ = tilt + mix(-0.46, 0, enterTurn) + mix(0, 0.42, exitTurn);
+        // The pack turns into the frame and keeps going on its way out — one
+        // continuous rotation, not a nudge and a nudge back. Kept modest: a
+        // believable turn rather than a spin that shows off the seams of a
+        // pack built from a single photo.
+        const storyRotY = mix(0.6, 0, enterTurn) + mix(0, -0.52, exitTurn) + pointer.x * 0.2;
+        const storyScale = restScale * mix(0.7, 1, enter) * mix(1, 1.18, exit);
+        // Mango fades in like every other product but never fades back out on
+        // its own — the finale below is what eventually takes it off screen.
+        const storyFade = isMango
+          ? band(rel, -0.5, -0.42)
+          : Math.min(band(rel, -0.5, -0.42), 1 - band(rel, 0.42, 0.5));
 
         const blend = stepForward;
         const floatY =
           Math.sin((time / FLOAT_PERIOD) * Math.PI * 2 + i) *
           ((FLOAT_PX / height) * VIEW_UNITS);
 
-        carton.group.position.set(
-          mix(heroX, storyX, blend),
-          mix(heroY, storyY, blend) + floatY,
-          mix(heroZ, storyZ, blend),
-        );
-        carton.group.rotation.set(
-          pointer.y * 0.06,
-          mix(heroRotY, storyRotY, blend),
-          mix(0, storyRotZ, blend),
-        );
-        carton.group.scale.setScalar(mix(baseScale, storyScale, blend));
+        let posX = mix(heroX, storyX, blend);
+        let posY = mix(heroY, storyY, blend) + floatY;
+        const posZ = mix(heroZ, storyZ, blend);
+        let rotY = mix(heroRotY, storyRotY, blend);
+        let rotZ = mix(0, storyRotZ, blend);
+        const scaleV = mix(baseScale, storyScale, blend);
+        let fade = mix(heroFade, storyFade, blend);
 
-        const fade = mix(heroFade, storyFade, blend);
+        if (isMango) {
+          // Tip toward the glass once the pack has arrived and held for a
+          // beat — poseT stays 0 through the entry and hold, then carries
+          // the pack smoothly into the pour pose from its settled position.
+          const finaleRel = rel - EXIT_START;
+          const poseT = smooth(clamp01(finaleRel / FINALE_TILT));
+          const pourAimX = restX - (narrow ? 0.08 : 0.32);
+          const pourAimY = restY - (narrow ? 0.32 : 0.46);
+          const pourTiltZ = tilt - (narrow ? 0.62 : 0.78);
+          posX = mix(posX, pourAimX, poseT);
+          posY = mix(posY, pourAimY, poseT);
+          rotZ = mix(rotZ, pourTiltZ, poseT);
+          rotY = mix(rotY, 0.14, poseT);
+
+          const finaleOutT = band(finaleRel, FINALE_SPAN - FINALE_OUT, FINALE_SPAN);
+          fade *= 1 - finaleOutT;
+
+          const pourWindowStart = FINALE_TILT + FINALE_PAUSE;
+          const pourProgress = clamp01((finaleRel - pourWindowStart) / FINALE_POUR);
+          // Anchored off the pack's fixed pour mark rather than its current
+          // (still-blending) position, and pulled well forward: a pack tipped
+          // this far over reaches wide across the frame, and the glass needs
+          // to read in front of it, not tucked behind.
+          pour.group.position.set(
+            pourAimX + (narrow ? 0.66 : 1.5),
+            pourAimY - (narrow ? 0.5 : 0.6),
+            posZ + 1.05,
+          );
+          pour.group.scale.setScalar(scaleV * 0.82);
+          pour.update(pourProgress, time, delta, fade);
+        }
+
+        carton.group.position.set(posX, posY, posZ);
+        carton.group.rotation.set(pointer.y * 0.06, rotY, rotZ);
+        carton.group.scale.setScalar(scaleV);
+
         carton.group.visible = fade > 0.015;
         carton.materials.forEach((material) => {
           material.opacity = fade;
@@ -475,6 +538,7 @@ export function Cinematic() {
       });
       shadowGeometry.dispose();
       shadowMap.dispose();
+      pour.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement);
