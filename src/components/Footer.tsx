@@ -1,3 +1,4 @@
+import { ElevateCredit } from "./ElevateCredit";
 import { Facebook, Instagram, Linkedin, Send } from "lucide-react";
 
 const FOOTER_LINKS = [
@@ -77,6 +78,7 @@ export function Footer() {
         <p className="mt-12 text-xs text-cream/40">
           © {new Date().getFullYear()} Lowcaly. Alla rättigheter förbehållna.
         </p>
+        <ElevateCredit />
       </div>
     </footer>
   );
